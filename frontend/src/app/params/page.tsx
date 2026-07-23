@@ -28,9 +28,9 @@ export default function ParamsPage() {
   const loadSettings = async () => {
     try {
       const res = await shopAPI.get();
-      setForm({ name: res.data.name, phone: res.data.phone || '', address: res.data.address || '' });
+      setForm({ name: res.data.name || '', phone: res.data.phone || '', address: res.data.address || '' });
       cacheSettings(res.data);
-    } catch {} finally { setLoading(false); }
+    } catch { console.error(); } finally { setLoading(false); }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -41,7 +41,7 @@ export default function ParamsPage() {
       setSuccess('Paramètres enregistrés');
       cacheSettings(res.data);
       setTimeout(() => setSuccess(''), 3000);
-    } catch { alert('Erreur'); } finally { setSaving(false); }
+    } catch { console.error(); alert('Erreur'); } finally { setSaving(false); }
   };
 
   if (!user || !isGerant) return null;

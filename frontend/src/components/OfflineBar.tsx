@@ -16,7 +16,7 @@ export default function OfflineBar() {
           🟡 {pendingCount} vente(s) en attente de synchronisation
           <button onClick={sync} disabled={syncing}
             className="ml-2 rounded bg-yellow-200 px-3 py-0.5 text-xs font-semibold hover:bg-yellow-300 disabled:opacity-50">
-            {syncing ? 'Sync...' : 'Sync'}
+            {syncing ? 'Synchro...' : 'Synchro'}
           </button>
           {lastSync && <span className="text-xs text-gray-400">Dernière sync: {lastSync.toLocaleTimeString()}</span>}
         </span>

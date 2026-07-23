@@ -50,7 +50,7 @@ export default function ProductsPage() {
         }
         setProducts(filtered);
       })
-      .catch(() => {})
+      .catch(() => console.error())
       .finally(() => setLoading(false));
   }, [debouncedSearch]);
 
@@ -77,7 +77,7 @@ export default function ProductsPage() {
       await productsAPI.delete(modal.product.id);
       setModal({ show: false });
       loadProducts();
-    } catch { alert('Erreur lors de la suppression'); }
+    } catch { console.error(); alert('Erreur lors de la suppression'); }
   };
 
   if (!user) return null;

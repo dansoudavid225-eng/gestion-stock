@@ -111,7 +111,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http:/
 
 export function mediaUrl(path: string | null): string | null {
   if (!path) return null;
-  const relative = path.replace(/^https?:\/\/[^\/]+(\/api)?\/media\//, '').replace(/^media\//, '');
+  const relative = path
+    .replace(/^https?:\/\/[^\/]+(\/api)?\/media\//, '')
+    .replace(/^\/?media\//, '');
   if (!relative) return null;
   return `${API_BASE}/api/media/${relative}`;
 }

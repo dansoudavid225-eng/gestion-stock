@@ -1,6 +1,7 @@
 import datetime
 import csv
 import os
+import mimetypes
 from io import BytesIO
 from wsgiref.util import FileWrapper
 from reportlab.lib.pagesizes import A4
@@ -22,8 +23,9 @@ from django.db import transaction
 from django.db.models import Sum, F, Q, Count
 from django.db.models.functions import TruncDate
 from django.utils import timezone
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse
 from .models import Product, StockEntry, Sale, Loss, InventoryAdjustment, DayClosure, ShopSettings, Customer
+from .permissions import IsGerant
 from .serializers import (
     UserSerializer, RegisterSerializer, ProductSerializer, ProductListSerializer,
     StockEntrySerializer, SaleSerializer, SaleCreateSerializer,
@@ -67,6 +69,7 @@ def cookie_refresh(request):
     try:
         refresh = RefreshToken(refresh_token)
         access = str(refresh.access_token)
+        refresh.rotate()
         response = Response({'access': access})
         _set_auth_cookies(response, access, str(refresh))
         return response
@@ -112,11 +115,6 @@ def register(request):
     return Response(serializer.errors, status=400)
 
 
-class IsGerant(permissions.BasePermission):
-    def has_permission(self, request, view):
-        return request.user.is_staff
-
-
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
@@ -127,7 +125,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         return ProductSerializer
 
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'add_stock']:
             return [IsAuthenticated(), IsGerant()]
         return [IsAuthenticated()]
 
@@ -264,9 +262,11 @@ class InventoryAdjustmentViewSet(viewsets.ModelViewSet):
             raise ValidationError("La nouvelle quantité ne peut pas être négative")
 
         old_quantity = product.stock
+        delta = new_quantity - old_quantity
 
-        product.stock = new_quantity
+        product.stock = F('stock') + delta
         product.save(update_fields=['stock'])
+        product.refresh_from_db()
 
         serializer.save(
             old_quantity=old_quantity,
@@ -299,8 +299,9 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = serializer.save()
-        user.set_password(serializer.validated_data['password'])
-        user.save()
+        if 'password' in serializer.validated_data and serializer.validated_data['password']:
+            user.set_password(serializer.validated_data['password'])
+            user.save()
 
     def perform_update(self, serializer):
         user = serializer.save()
@@ -338,29 +339,31 @@ def dashboard(request):
     low_stock_products = Product.objects.filter(stock__lte=F('min_stock'), is_active=True)
     out_of_stock = Product.objects.filter(stock=0, is_active=True)
 
-    top_products = Sale.objects.values('product__name', 'product__purchase_price', 'product__id').annotate(
+    top_products = Sale.objects.values('product_id').annotate(
         total_qty=Sum('quantity'),
         total_rev=Sum('total')
     ).order_by('-total_qty')[:10]
 
+    product_ids = [p['product_id'] for p in top_products]
+    products_map = {p.id: p for p in Product.objects.filter(id__in=product_ids)}
+
     is_gerant = request.user.is_staff
     top_with_margin = []
     for p in top_products:
-        margin = float(p['total_rev']) - (float(p['product__purchase_price']) * float(p['total_qty'])) if is_gerant else 0
-        entry = {
-            'product__name': p['product__name'],
+        product = products_map.get(p['product_id'])
+        margin = (product.selling_price - product.purchase_price) * p['total_qty'] if (is_gerant and product) else 0
+        top_with_margin.append({
+            'product__name': product.name if product else 'Inconnu',
             'total_qty': p['total_qty'],
             'total_rev': p['total_rev'],
-        }
-        if is_gerant:
-            entry['margin'] = margin
-        top_with_margin.append(entry)
+            'margin': margin,
+        })
 
     day_closed = DayClosure.objects.filter(date=today).exists()
 
     total_margin = sum(
         (s.product.selling_price - s.product.purchase_price) * s.quantity
-        for s in Sale.objects.filter(is_credit=False)
+        for s in Sale.objects.filter(is_credit=False).select_related('product')
     )
 
     sales_by_day = (
@@ -396,7 +399,7 @@ def rapport_pdf(request):
     start_date = request.query_params.get('start_date', timezone.now().date().isoformat())
     end_date = request.query_params.get('end_date', timezone.now().date().isoformat())
 
-    sales = Sale.objects.filter(date__date__gte=start_date, date__date__lte=end_date)
+    sales = Sale.objects.filter(date__date__gte=start_date, date__date__lte=end_date).select_related('product', 'created_by')
     if not request.user.is_staff:
         sales = sales.filter(created_by=request.user)
 
@@ -455,7 +458,7 @@ def export_excel(request):
     start_date = request.query_params.get('start_date')
     end_date = request.query_params.get('end_date')
 
-    sales = Sale.objects.all()
+    sales = Sale.objects.select_related('product', 'created_by').all()
     if start_date:
         sales = sales.filter(date__date__gte=start_date)
     if end_date:
@@ -519,7 +522,12 @@ def shop_settings(request):
         s.phone = request.data.get('phone', s.phone)
         s.address = request.data.get('address', s.address)
         if 'logo' in request.FILES:
-            s.logo = request.FILES['logo']
+            logo = request.FILES['logo']
+            if logo.size > 5 * 1024 * 1024:
+                return Response({'error': 'Le logo ne doit pas dépasser 5 Mo'}, status=400)
+            if logo.content_type not in ['image/jpeg', 'image/png', 'image/webp', 'image/gif']:
+                return Response({'error': 'Format d\'image non supporté'}, status=400)
+            s.logo = logo
         s.save()
     return Response({
         'name': s.name,
@@ -533,7 +541,7 @@ def shop_settings(request):
 @permission_classes([IsAuthenticated, IsGerant])
 def credits(request):
     if request.method == 'GET':
-        credits = Sale.objects.filter(is_credit=True).order_by('-date')
+        credits = Sale.objects.filter(is_credit=True).select_related('product', 'created_by').order_by('-date')
         data = []
         for c in credits:
             data.append({
@@ -567,6 +575,7 @@ def serve_media(request, path):
         return Response({'error': 'Accès refusé'}, status=403)
     if not os.path.isfile(file_path):
         return Response({'error': 'Fichier introuvable'}, status=404)
-    response = HttpResponse(FileWrapper(open(file_path, 'rb')), content_type='application/octet-stream')
+    content_type, _ = mimetypes.guess_type(file_path)
+    response = FileResponse(open(file_path, 'rb'), content_type=content_type or 'application/octet-stream')
     response['Content-Disposition'] = f'inline; filename="{os.path.basename(file_path)}"'
     return response

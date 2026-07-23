@@ -18,7 +18,7 @@ export default function DashboardPage() {
   const loadData = () => {
     dashboardAPI.get()
       .then((res) => setData(res.data))
-      .catch(() => {})
+      .catch(() => console.error())
       .finally(() => setLoading(false));
   };
 
@@ -26,9 +26,9 @@ export default function DashboardPage() {
     if (!user) { router.push('/'); return; }
     loadData();
     if (user?.is_staff) {
-      ecartsAPI.list().then(r => setEcarts(r.data)).catch(() => {});
+      ecartsAPI.list().then(r => setEcarts(r.data)).catch(() => console.error());
     }
-  }, [user, router]);
+  }, [user]);
 
   const handleCloseDay = async () => {
     if (!confirm('Clôturer la journée ? Plus aucune vente ne pourra être enregistrée aujourd\'hui.')) return;

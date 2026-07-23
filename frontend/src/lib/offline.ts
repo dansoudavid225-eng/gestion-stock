@@ -28,7 +28,7 @@ export function addPendingSale(sale: Omit<OfflineSale, 'id' | 'created_at' | 'sy
   const pending = getPendingSales();
   pending.push({
     ...sale,
-    id: crypto.randomUUID(),
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     created_at: new Date().toISOString(),
     synced: false,
   });
@@ -59,7 +59,7 @@ export async function syncPendingSales(): Promise<number> {
       removePendingSale(sale.id);
       synced++;
     } catch {
-      break;
+      continue;
     }
   }
   return synced;

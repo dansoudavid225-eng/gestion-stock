@@ -47,7 +47,7 @@ export default function CustomersPage() {
         }
         setCustomers(filtered);
       })
-      .catch(() => {})
+      .catch(() => console.error())
       .finally(() => setLoading(false));
   }, [debouncedSearch]);
 
@@ -60,7 +60,7 @@ export default function CustomersPage() {
       await customersAPI.delete(modal.customer.id);
       setModal({ show: false });
       loadCustomers();
-    } catch { alert('Erreur lors de la suppression'); }
+    } catch { console.error(); alert('Erreur lors de la suppression'); }
   };
 
   if (!user) return null;

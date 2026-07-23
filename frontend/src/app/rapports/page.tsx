@@ -48,7 +48,8 @@ export default function RapportsPage() {
       ]);
       setSales(sRes.data);
       setDashData(dRes.data);
-    } catch (err) {
+    } catch {
+      console.error();
     } finally {
       setLoading(false);
     }
@@ -58,7 +59,7 @@ export default function RapportsPage() {
     try {
       const res = await ecartsAPI.list();
       setEcarts(res.data);
-    } catch {}
+    } catch { console.error(); }
   };
 
   useEffect(() => {

@@ -15,7 +15,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name', 'is_staff']
+        fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -23,7 +23,11 @@ class RegisterSerializer(serializers.ModelSerializer):
             self.fields['password'].required = False
 
     def create(self, validated_data):
+        password = validated_data.pop('password', None)
         user = User.objects.create_user(**validated_data)
+        if password:
+            user.set_password(password)
+            user.save()
         return user
 
 

@@ -18,5 +18,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/products/:path*', '/sales/:path*', '/credits/:path*', '/rapports/:path*', '/params/:path*'],
+  matcher: ['/dashboard/:path*', '/products/:path*', '/sales/:path*', '/credits/:path*', '/rapports/:path*', '/params/:path*', '/customers/:path*', '/inventory/:path*', '/users/:path*'],
 }
