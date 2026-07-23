@@ -159,7 +159,7 @@ export default function SalesPage() {
   const printReceipt = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    let shop = {};
+    let shop: any = {};
     try { shop = JSON.parse(localStorage.getItem('shop_settings') || '{}'); } catch { shop = {}; }
     const now = new Date().toLocaleString('fr-FR');
     printWindow.document.write(`
