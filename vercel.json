@@ -1,1 +1,5 @@
-{"rootDirectory":"frontend","buildCommand":"npm run build","installCommand":"npm install","outputDirectory":".next"}
+{
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "outputDirectory": ".next"
+}
