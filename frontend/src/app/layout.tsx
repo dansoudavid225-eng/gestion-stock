@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import AuthGuard from "@/components/AuthGuard";
 import { OfflineProvider } from "@/context/OfflineContext";
 import OfflineBar from "@/components/OfflineBar";
 import Script from "next/script";
@@ -41,7 +42,7 @@ export default function RootLayout({
         <OfflineProvider>
           <AuthProvider>
             <OfflineBar />
-            {children}
+            <AuthGuard>{children}</AuthGuard>
           </AuthProvider>
         </OfflineProvider>
       </body>
