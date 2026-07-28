@@ -35,8 +35,8 @@ from .serializers import (
 
 def _set_auth_cookies(response, access_token, refresh_token):
     secure = not settings.DEBUG
-    response.set_cookie('access_token', access_token, httponly=True, secure=secure, samesite='Lax', path='/', max_age=1800)
-    response.set_cookie('refresh_token', refresh_token, httponly=True, secure=secure, samesite='Lax', path='/', max_age=86400)
+    response.set_cookie('access_token', access_token, httponly=True, secure=secure, samesite=('None' if secure else 'Lax'), path='/', max_age=1800)
+    response.set_cookie('refresh_token', refresh_token, httponly=True, secure=secure, samesite=('None' if secure else 'Lax'), path='/', max_age=86400)
 
 
 def _clear_auth_cookies(response):
