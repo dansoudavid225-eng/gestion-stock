@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { productsAPI } from '@/lib/api';
+import { productsAPI, mediaUrl } from '@/lib/api';
 import AppLayout from '@/components/AppLayout';
 
 export default function EditProductPage() {
@@ -46,7 +46,7 @@ export default function EditProductPage() {
           min_stock: p.min_stock ?? 5,
           is_active: p.is_active ?? true,
         });
-        if (p.photo) setPhotoPreview(p.photo);
+        if (p.photo) setPhotoPreview(mediaUrl(p.photo));
       })
       .catch(() => router.push('/products'))
       .finally(() => setLoading(false));
