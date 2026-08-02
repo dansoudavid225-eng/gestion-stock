@@ -427,8 +427,14 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         user = serializer.save()
-        if 'password' in serializer.validated_data:
-            user.set_password(serializer.validated_data['password'])
+        # On ne touche au mot de passe que si une valeur non vide a été
+        # envoyée. Avant ce correctif, un appel API direct (hors frontend,
+        # qui filtre déjà le champ vide côté client) avec password=""
+        # écrasait silencieusement le mot de passe existant par une chaîne
+        # vide, car seule la présence de la clé était testée.
+        password = serializer.validated_data.get('password')
+        if password:
+            user.set_password(password)
             user.save()
 
 
@@ -640,18 +646,25 @@ def ecarts_vendeurs(request):
     start_of_day = timezone.make_aware(datetime.datetime.combine(today, datetime.time.min))
     end_of_day = timezone.make_aware(datetime.datetime.combine(today, datetime.time.max))
 
-    vendeurs = User.objects.filter(is_staff=False, sale__date__gte=start_of_day, sale__date__lte=end_of_day).distinct()
-    ecarts = []
-    for v in vendeurs:
-        total_vendu = Sale.objects.filter(created_by=v, date__gte=start_of_day, date__lte=end_of_day).aggregate(
-            t=Sum('total')
-        )['t'] or 0
-        nb_ventes = Sale.objects.filter(created_by=v, date__gte=start_of_day, date__lte=end_of_day).count()
-        ecarts.append({
-            'vendeur': v.username,
-            'nb_ventes': nb_ventes,
-            'total_vendu': total_vendu,
-        })
+    # Une seule requête groupée au lieu d'une requête par vendeur (l'ancienne
+    # version faisait 2 requêtes par vendeur trouvé, donc 2N requêtes pour N
+    # vendeurs actifs dans la journée).
+    rows = (
+        Sale.objects
+        .filter(created_by__is_staff=False, date__gte=start_of_day, date__lte=end_of_day)
+        .values('created_by__username')
+        .annotate(nb_ventes=Count('id'), total_vendu=Sum('total'))
+        .order_by('created_by__username')
+    )
+
+    ecarts = [
+        {
+            'vendeur': r['created_by__username'],
+            'nb_ventes': r['nb_ventes'],
+            'total_vendu': r['total_vendu'] or 0,
+        }
+        for r in rows
+    ]
 
     return Response(ecarts)
 

@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useOffline } from '@/context/OfflineContext';
-import { salesAPI, productsAPI, mediaUrl } from '@/lib/api';
+import { salesAPI, productsAPI, mediaUrl, type PaymentMethod } from '@/lib/api';
 import { addPendingSale, getPendingSales, cacheProducts, getCachedProducts } from '@/lib/offline';
 import AppLayout from '@/components/AppLayout';
 
@@ -23,7 +23,7 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
-  const [checkoutMethod, setCheckoutMethod] = useState('cash');
+  const [checkoutMethod, setCheckoutMethod] = useState<PaymentMethod>('cash');
   const [checkoutClient, setCheckoutClient] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -408,7 +408,7 @@ export default function SalesPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Mode de paiement</label>
-                <select value={checkoutMethod} onChange={(e) => setCheckoutMethod(e.target.value)}
+                <select value={checkoutMethod} onChange={(e) => setCheckoutMethod(e.target.value as PaymentMethod)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                   <option value="cash">Espèces</option>
                   <option value="momo">Mobile Money</option>

@@ -1,4 +1,4 @@
-import { salesAPI } from './api';
+import { salesAPI, type PaymentMethod } from './api';
 
 const PENDING_KEY = 'offline_sales';
 const CACHED_PRODUCTS_KEY = 'cached_products';
@@ -10,7 +10,7 @@ export interface OfflineSale {
   product_id: number;
   product_name: string;
   quantity: number;
-  payment_method: string;
+  payment_method: PaymentMethod;
   client_name: string;
   total: number;
   created_at: string;

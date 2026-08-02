@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { productsAPI } from '@/lib/api';
@@ -13,9 +13,21 @@ export default function NewProductPage() {
     name: '', category: '', purchase_price: 0, selling_price: 0,
     stock: 0, min_stock: 5,
   });
+  // Mode de saisie du prix d'achat : soit le prix unitaire directement,
+  // soit le prix total payé pour tout le lot (divisé par le stock initial
+  // pour obtenir le prix unitaire réellement enregistré).
+  const [priceMode, setPriceMode] = useState<'unit' | 'lot'>('unit');
+  const [lotTotalPrice, setLotTotalPrice] = useState(0);
   const [photo, setPhoto] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Recalcule le prix d'achat unitaire dès que le prix total du lot ou la
+  // quantité de stock initial change, tant qu'on est en mode "lot".
+  useEffect(() => {
+    if (priceMode !== 'lot') return;
+    setForm((f) => ({ ...f, purchase_price: f.stock > 0 ? lotTotalPrice / f.stock : 0 }));
+  }, [priceMode, lotTotalPrice, form.stock]);
 
   if (!user) return null;
 
@@ -58,16 +70,48 @@ export default function NewProductPage() {
             <input type="text" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Prix d&apos;achat (FCFA)</label>
-              <input type="number" min="0" value={form.purchase_price} onChange={(e) => setForm({ ...form, purchase_price: Number(e.target.value) })}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">Prix d&apos;achat</label>
+              <div className="inline-flex rounded-lg border border-gray-300 p-0.5 text-xs">
+                <button type="button" onClick={() => setPriceMode('unit')}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${priceMode === 'unit' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                  Prix unitaire
+                </button>
+                <button type="button" onClick={() => setPriceMode('lot')}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${priceMode === 'lot' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                  Prix total du lot
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Prix de vente *</label>
-              <input type="number" min="0" value={form.selling_price} onChange={(e) => setForm({ ...form, selling_price: Number(e.target.value) })}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" required />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                {priceMode === 'unit' ? (
+                  <>
+                    <label className="block text-xs text-gray-500 mb-1">Prix d&apos;achat unitaire (FCFA)</label>
+                    <input type="number" min="0" value={form.purchase_price}
+                      onChange={(e) => setForm({ ...form, purchase_price: Number(e.target.value) })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-xs text-gray-500 mb-1">Prix total du lot (FCFA)</label>
+                    <input type="number" min="0" value={lotTotalPrice}
+                      onChange={(e) => setLotTotalPrice(Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                    <p className="text-xs text-gray-400 mt-1">
+                      {form.stock > 0
+                        ? `≈ ${form.purchase_price.toLocaleString(undefined, { maximumFractionDigits: 2 })} FCFA / unité (÷ ${form.stock} en stock initial)`
+                        : "Renseigne le stock initial pour calculer le prix unitaire"}
+                    </p>
+                  </>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Prix de vente *</label>
+                <input type="number" min="0" value={form.selling_price} onChange={(e) => setForm({ ...form, selling_price: Number(e.target.value) })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" required />
+              </div>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

@@ -51,7 +51,7 @@ export default function StockEntriesPage() {
                   <tr className="bg-gray-50 text-left text-gray-500">
                     <th className="p-3 font-medium">Produit</th>
                     <th className="p-3 font-medium">Quantité</th>
-                    <th className="p-3 font-medium">Prix unitaire</th>
+                    <th className="p-3 font-medium">Prix général</th>
                     <th className="p-3 font-medium">Total</th>
                     <th className="p-3 font-medium">Fournisseur</th>
                     <th className="p-3 font-medium">Date</th>
