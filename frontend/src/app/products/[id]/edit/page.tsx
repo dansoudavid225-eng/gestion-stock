@@ -111,8 +111,11 @@ export default function EditProductPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Stock</label>
-              <input type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: Number(e.target.value) })}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input type="number" value={form.stock} disabled
+                className="w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-500 cursor-not-allowed" />
+              <p className="text-xs text-gray-400 mt-1">
+                Non modifiable ici. Utilisez « + Stock », « Pertes » ou « Ajustements » pour changer la quantité (avec trace).
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Seuil d&apos;alerte</label>

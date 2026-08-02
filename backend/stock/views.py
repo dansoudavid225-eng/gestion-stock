@@ -130,6 +130,15 @@ class ProductViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsGerant()]
         return [IsAuthenticated()]
 
+    def perform_update(self, serializer):
+        # Le stock ne doit jamais être modifié via l'édition générale du
+        # produit (aucune trace, aucun audit). Toute variation de stock
+        # doit passer par add_stock, une perte ou un ajustement, qui eux
+        # créent un enregistrement traçable. On ignore donc silencieusement
+        # toute valeur de 'stock' envoyée ici et on garde la valeur actuelle.
+        serializer.validated_data.pop('stock', None)
+        serializer.save()
+
     def get_queryset(self):
         qs = Product.objects.all()
         search = self.request.query_params.get('search', '')
