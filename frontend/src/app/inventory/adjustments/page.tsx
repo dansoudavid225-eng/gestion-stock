@@ -99,12 +99,12 @@ export default function AdjustmentsPage() {
                   {paginated.length === 0 ? (
                     <tr><td colSpan={7} className="p-6 text-center text-gray-400">Aucun ajustement</td></tr>
                   ) : paginated.map((a: any) => {
-                    const diff = a.new_stock - a.old_stock;
+                    const diff = a.new_quantity - a.old_quantity;
                     return (
                       <tr key={a.id} className="border-t border-gray-100 hover:bg-gray-50">
                         <td className="p-3 font-medium text-gray-800">{a.product_name || a.product?.name || '-'}</td>
-                        <td className="p-3 text-gray-500">{a.old_stock}</td>
-                        <td className="p-3 text-gray-500">{a.new_stock}</td>
+                        <td className="p-3 text-gray-500">{a.old_quantity}</td>
+                        <td className="p-3 text-gray-500">{a.new_quantity}</td>
                         <td className={`p-3 font-semibold ${diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-600' : 'text-gray-500'}`}>
                           {diff > 0 ? '+' : ''}{diff}
                         </td>

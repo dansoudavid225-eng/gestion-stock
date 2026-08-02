@@ -124,10 +124,11 @@ class SaleCreateSerializer(serializers.ModelSerializer):
 
 class LossSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')
+    created_by_name = serializers.ReadOnlyField(source='created_by.username')
 
     class Meta:
         model = Loss
-        fields = ['id', 'product', 'product_name', 'quantity', 'reason', 'date', 'created_by']
+        fields = ['id', 'product', 'product_name', 'quantity', 'reason', 'date', 'created_by', 'created_by_name']
         read_only_fields = ['date', 'created_by']
 
     def validate_quantity(self, value):
