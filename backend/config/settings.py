@@ -159,12 +159,13 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(hours=24),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
-    'AUTH_COOKIE': 'access_token',
-    'AUTH_COOKIE_SECURE': not DEBUG,
-    'AUTH_COOKIE_HTTP_ONLY': True,
-    'AUTH_COOKIE_PATH': '/',
-    'AUTH_COOKIE_SAMESITE': 'Lax',
 }
+# Remarque : les cookies d'auth ('access_token'/'refresh_token') ne sont PAS
+# gérés par les clés AUTH_COOKIE_* de simplejwt (elles ne sont lues par aucun
+# code de ce projet, car on utilise CookieJWTAuthentication + des cookies
+# posés à la main). Le vrai comportement (httponly, secure, samesite) est
+# défini dans stock/views.py -> _set_auth_cookies(). C'est là qu'il faut
+# modifier le comportement des cookies, pas ici.
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True

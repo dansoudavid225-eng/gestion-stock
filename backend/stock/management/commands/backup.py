@@ -4,6 +4,8 @@ import subprocess
 from datetime import datetime
 from django.core.management.base import BaseCommand
 from django.conf import settings
+from django.core.files.storage import default_storage
+from django.core.files.base import File
 
 
 class Command(BaseCommand):
@@ -62,9 +64,35 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Moteur de base de données non supporté : {engine}"))
             return
 
-        # Ne garder que les 30 sauvegardes les plus récentes.
+        # Ne garder que les 30 sauvegardes locales les plus récentes.
         backups = sorted(backup_dir.glob(pattern))
         while len(backups) > 30:
             oldest = backups.pop(0)
             oldest.unlink()
-            self.stdout.write(f'Ancienne sauvegarde supprimée : {oldest}')
+            self.stdout.write(f'Ancienne sauvegarde locale supprimée : {oldest}')
+
+        # Sur Render (et la plupart des PaaS), le disque local est éphémère :
+        # tout ce qui est écrit ici disparaît au prochain redéploiement/restart.
+        # Si le storage S3/Supabase est configuré, on y pousse aussi une copie
+        # persistante sous le préfixe 'backups/'.
+        if getattr(settings, 'USE_S3_STORAGE', False):
+            remote_name = f'backups/{backup_path.name}'
+            try:
+                with open(backup_path, 'rb') as fh:
+                    default_storage.save(remote_name, File(fh))
+                self.stdout.write(self.style.SUCCESS(f'Sauvegarde également poussée sur le storage distant : {remote_name}'))
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"Échec de l'envoi de la sauvegarde vers le storage distant : {e}"))
+                return
+
+            # Nettoyage des sauvegardes distantes au-delà de 30, si le backend
+            # de storage expose bien listdir (c'est le cas de S3Storage).
+            try:
+                _, remote_files = default_storage.listdir('backups')
+                remote_files = sorted(f for f in remote_files if f.endswith(pattern.lstrip('*')))
+                while len(remote_files) > 30:
+                    oldest_remote = remote_files.pop(0)
+                    default_storage.delete(f'backups/{oldest_remote}')
+                    self.stdout.write(f'Ancienne sauvegarde distante supprimée : {oldest_remote}')
+            except NotImplementedError:
+                pass

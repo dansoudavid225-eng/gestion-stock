@@ -1,11 +1,12 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { getPendingSales, syncPendingSales } from '@/lib/offline';
+import { getPendingSales, syncPendingSales, getFailedSales } from '@/lib/offline';
 
 interface OfflineContextType {
   isOnline: boolean;
   pendingCount: number;
+  failedCount: number;
   syncing: boolean;
   sync: () => Promise<number>;
   lastSync: Date | null;
@@ -16,11 +17,13 @@ const OfflineContext = createContext<OfflineContextType>({} as OfflineContextTyp
 export function OfflineProvider({ children }: { children: ReactNode }) {
   const [isOnline, setIsOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const updatePending = useCallback(() => {
     setPendingCount(getPendingSales().filter((s) => !s.synced).length);
+    setFailedCount(getFailedSales().length);
   }, []);
 
   useEffect(() => {
@@ -51,7 +54,7 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
   }, [updatePending]);
 
   return (
-    <OfflineContext.Provider value={{ isOnline, pendingCount, syncing, sync, lastSync }}>
+    <OfflineContext.Provider value={{ isOnline, pendingCount, failedCount, syncing, sync, lastSync }}>
       {children}
     </OfflineContext.Provider>
   );

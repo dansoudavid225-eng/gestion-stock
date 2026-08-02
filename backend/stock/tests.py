@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from rest_framework.test import APIClient
 from rest_framework import status
 from .models import Product, Sale, StockEntry, Loss, InventoryAdjustment, DayClosure
@@ -43,6 +44,12 @@ class SaleModelTest(TestCase):
 
 class APITestCase(TestCase):
     def setUp(self):
+        # Le throttle DRF (AnonRateThrottle/UserRateThrottle) utilise le cache
+        # Django, qui n'est PAS remis à zéro par le TestCase (contrairement à
+        # la base de données). Sans ce clear(), les tests suivants héritent
+        # des compteurs des tests précédents et finissent par recevoir 429
+        # après 10 logins cumulés, sans rapport avec ce qu'ils testent.
+        cache.clear()
         self.client = APIClient()
         self.admin = User.objects.create_superuser(username='admin', password='admin123', email='a@a.com')
         self.vendeur = User.objects.create_user(username='vendeur', password='vendeur123')
@@ -162,6 +169,64 @@ class APITestCase(TestCase):
         self.assertEqual(res.status_code, 201)
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock, 30)
+
+    def test_inventory_adjustment_same_quantity_rejected(self):
+        # Un ajustement sans changement réel n'a rien à faire dans le journal.
+        self.authenticate()
+        res = self.client.post(
+            '/api/adjustments/',
+            {'product': self.product.id, 'new_quantity': self.product.stock, 'reason': 'Rien'},
+            format='json'
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_loss_negative_quantity_rejected(self):
+        # Régression : une quantité négative sur une perte ferait
+        # augmenter le stock au lieu de le diminuer.
+        self.authenticate()
+        old_stock = self.product.stock
+        res = self.client.post(
+            '/api/losses/',
+            {'product': self.product.id, 'quantity': -10, 'reason': 'Test'},
+            format='json'
+        )
+        self.assertEqual(res.status_code, 400)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, old_stock)
+
+    def test_loss_zero_quantity_rejected(self):
+        self.authenticate()
+        res = self.client.post(
+            '/api/losses/',
+            {'product': self.product.id, 'quantity': 0, 'reason': 'Test'},
+            format='json'
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_dashboard_margin_matches_manual_calculation(self):
+        # Vérifie que l'agrégation SQL de la marge donne le même résultat
+        # que le calcul manuel (régression sur le passage Python -> SQL).
+        self.authenticate()
+        self.client.post('/api/sales/', {'product': self.product.id, 'quantity': 4}, format='json')
+        res = self.client.get('/api/dashboard/')
+        self.assertEqual(res.status_code, 200)
+        expected_margin = (self.product.selling_price - self.product.purchase_price) * 4
+        self.assertEqual(res.data['overall']['total_margin'], expected_margin)
+
+    def test_create_product_initial_stock_creates_stock_entry(self):
+        # Le stock de départ à la création doit être tracé, comme
+        # n'importe quelle autre entrée de stock.
+        self.authenticate()
+        res = self.client.post(
+            '/api/products/',
+            {'name': 'Savon', 'selling_price': 500, 'stock': 15},
+            format='json'
+        )
+        self.assertEqual(res.status_code, 201)
+        entry = StockEntry.objects.filter(product_id=res.data['id']).first()
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.quantity, 15)
+        self.assertEqual(entry.supplier, 'Stock initial')
 
     def test_day_closure(self):
         self.authenticate()

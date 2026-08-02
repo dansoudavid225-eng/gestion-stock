@@ -121,6 +121,14 @@ class LossSerializer(serializers.ModelSerializer):
         fields = ['id', 'product', 'product_name', 'quantity', 'reason', 'date', 'created_by']
         read_only_fields = ['date', 'created_by']
 
+    def validate_quantity(self, value):
+        # Sans ce garde-fou, une quantité négative ferait passer
+        # `product.stock = F('stock') - quantity` en incrémentation :
+        # une "perte" négative augmenterait silencieusement le stock.
+        if value <= 0:
+            raise serializers.ValidationError("La quantité perdue doit être positive")
+        return value
+
 
 class InventoryAdjustmentSerializer(serializers.ModelSerializer):
     product_name = serializers.ReadOnlyField(source='product.name')

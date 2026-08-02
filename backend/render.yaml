@@ -3,6 +3,7 @@ services:
     name: gestion-stock-api
     runtime: python
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    preDeployCommand: python manage.py migrate --noinput
     startCommand: gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers 2
     envVars:
       - key: DJANGO_SECRET_KEY

@@ -20,7 +20,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.models import User
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Sum, F, Q, Count
+from django.db.models import Sum, F, Q, Count, ExpressionWrapper, DecimalField
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.http import HttpResponse, FileResponse, HttpResponseRedirect
@@ -138,6 +138,22 @@ class ProductViewSet(viewsets.ModelViewSet):
         # toute valeur de 'stock' envoyée ici et on garde la valeur actuelle.
         serializer.validated_data.pop('stock', None)
         serializer.save()
+
+    def perform_create(self, serializer):
+        # Exception volontaire à la règle ci-dessus : à la création d'un
+        # produit, un stock de départ (!= 0) est légitime. On le trace quand
+        # même via un StockEntry pour que l'historique du produit reste
+        # complet dès le premier jour, au lieu d'un stock qui "apparaît"
+        # sans aucune entrée correspondante.
+        product = serializer.save()
+        if product.stock and product.stock > 0:
+            StockEntry.objects.create(
+                product=product,
+                quantity=product.stock,
+                unit_price=product.purchase_price,
+                supplier='Stock initial',
+                created_by=self.request.user
+            )
 
     def get_queryset(self):
         qs = Product.objects.all()
@@ -352,6 +368,9 @@ class InventoryAdjustmentViewSet(
             raise ValidationError("La nouvelle quantité ne peut pas être négative")
 
         old_quantity = product.stock
+
+        if new_quantity == old_quantity:
+            raise ValidationError("La nouvelle quantité est identique à l'actuelle, aucun ajustement à enregistrer")
         delta = new_quantity - old_quantity
 
         product.stock = F('stock') + delta
@@ -464,10 +483,13 @@ def dashboard(request):
 
     day_closed = DayClosure.objects.filter(date=today).exists()
 
-    total_margin = sum(
-        (s.product.selling_price - s.product.purchase_price) * s.quantity
-        for s in Sale.objects.filter(is_credit=False).select_related('product')
+    margin_expr = ExpressionWrapper(
+        (F('product__selling_price') - F('product__purchase_price')) * F('quantity'),
+        output_field=DecimalField(max_digits=14, decimal_places=2)
     )
+    total_margin = Sale.objects.filter(is_credit=False).aggregate(
+        margin=Sum(margin_expr)
+    )['margin'] or 0
 
     sales_by_day = (
         Sale.objects
@@ -526,25 +548,43 @@ def rapport_pdf(request):
     doc.setFont("Helvetica-Bold", 14)
     doc.drawString(50, height - 145, "Détail des ventes")
 
-    data = [["Produit", "Qté", "Prix unit.", "Total", "Paiement", "Date"]]
-    for s in sales:
-        data.append([
-            s.product.name, str(s.quantity), f"{int(s.unit_price):,}",
-            f"{int(s.total):,}", s.get_payment_method_display(),
-            s.date.strftime("%d/%m/%Y %H:%M")
-        ])
+    header = ["Produit", "Qté", "Prix unit.", "Total", "Paiement", "Date"]
+    rows = [[
+        s.product.name, str(s.quantity), f"{int(s.unit_price):,}",
+        f"{int(s.total):,}", s.get_payment_method_display(),
+        s.date.strftime("%d/%m/%Y %H:%M")
+    ] for s in sales]
 
-    table = Table(data, colWidths=[120, 40, 80, 80, 80, 100])
-    table.setStyle(TableStyle([
+    table_style = TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2563eb')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-    ]))
+    ])
 
-    table.wrapOn(doc, width, height)
-    table.drawOn(doc, 50, height - 170 - len(data) * 20)
+    # Le tableau peut dépasser la hauteur d'une page A4 si la période
+    # contient beaucoup de ventes : on le découpe en pages successives
+    # plutôt que de risquer un dessin hors-page (silencieusement coupé).
+    row_height = 20
+    top_y = height - 170
+    bottom_margin = 50
+    rows_per_page = max(1, int((top_y - bottom_margin) // row_height) - 1)  # -1 pour l'en-tête
+
+    chunks = [rows[i:i + rows_per_page] for i in range(0, len(rows), rows_per_page)] or [[]]
+
+    for page_index, chunk in enumerate(chunks):
+        if page_index > 0:
+            doc.showPage()
+            doc.setFont("Helvetica-Bold", 14)
+            doc.drawString(50, height - 50, f"Détail des ventes (suite) — page {page_index + 1}")
+
+        page_data = [header] + chunk
+        table = Table(page_data, colWidths=[120, 40, 80, 80, 80, 100])
+        table.setStyle(table_style)
+        table.wrapOn(doc, width, height)
+        y = (height - 170 if page_index == 0 else height - 90) - len(page_data) * row_height
+        table.drawOn(doc, 50, y)
 
     doc.showPage()
     doc.save()

@@ -3,6 +3,8 @@ import { salesAPI } from './api';
 const PENDING_KEY = 'offline_sales';
 const CACHED_PRODUCTS_KEY = 'cached_products';
 
+const MAX_SYNC_ATTEMPTS = 5;
+
 export interface OfflineSale {
   id: string;
   product_id: number;
@@ -13,6 +15,8 @@ export interface OfflineSale {
   total: number;
   created_at: string;
   synced: boolean;
+  syncAttempts?: number;
+  syncError?: string;
 }
 
 export function getPendingSales(): OfflineSale[] {
@@ -40,13 +44,27 @@ export function removePendingSale(id: string) {
   localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
 }
 
+function updatePendingSale(id: string, patch: Partial<OfflineSale>) {
+  const pending = getPendingSales().map((s) => (s.id === id ? { ...s, ...patch } : s));
+  localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+}
+
 export function clearSyncedSales() {
   const pending = getPendingSales().filter((s) => !s.synced);
   localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
 }
 
+// Ventes qui ont dépassé MAX_SYNC_ATTEMPTS : elles ne seront plus retentées
+// automatiquement, il faut une action explicite de l'utilisateur (retry ou
+// suppression) après avoir vu l'erreur. Évite la boucle d'échec silencieux.
+export function getFailedSales(): OfflineSale[] {
+  return getPendingSales().filter((s) => !s.synced && (s.syncAttempts || 0) >= MAX_SYNC_ATTEMPTS);
+}
+
 export async function syncPendingSales(): Promise<number> {
-  const pending = getPendingSales().filter((s) => !s.synced);
+  const pending = getPendingSales().filter(
+    (s) => !s.synced && (s.syncAttempts || 0) < MAX_SYNC_ATTEMPTS
+  );
   let synced = 0;
   for (const sale of pending) {
     try {
@@ -58,7 +76,15 @@ export async function syncPendingSales(): Promise<number> {
       });
       removePendingSale(sale.id);
       synced++;
-    } catch {
+    } catch (err: any) {
+      const attempts = (sale.syncAttempts || 0) + 1;
+      const message =
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        (attempts >= MAX_SYNC_ATTEMPTS
+          ? "Échec après plusieurs tentatives, vérifie cette vente"
+          : "Échec temporaire, nouvel essai au prochain sync");
+      updatePendingSale(sale.id, { syncAttempts: attempts, syncError: message });
       continue;
     }
   }
