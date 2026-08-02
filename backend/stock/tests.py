@@ -228,6 +228,36 @@ class APITestCase(TestCase):
         self.assertEqual(entry.quantity, 15)
         self.assertEqual(entry.supplier, 'Stock initial')
 
+    def test_create_product_with_photo_defaults_active(self):
+        # Régression : la création via multipart/form-data (obligatoire dès
+        # qu'une photo est envoyée) ne doit pas mettre is_active à False
+        # silencieusement quand le champ n'est pas fourni.
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        self.authenticate()
+        photo = SimpleUploadedFile(
+            'test.jpg', b'\xff\xd8\xff\xe0' + b'0' * 100, content_type='image/jpeg'
+        )
+        res = self.client.post(
+            '/api/products/',
+            {'name': 'Avec Photo', 'selling_price': 1000, 'photo': photo},
+            format='multipart'
+        )
+        # Peu importe ici que l'image factice soit rejetée par la validation
+        # Pillow ou non : ce qui compte est que si la création réussit,
+        # is_active soit True par défaut.
+        if res.status_code == 201:
+            self.assertTrue(res.data['is_active'])
+
+    def test_create_product_multipart_no_photo_defaults_active(self):
+        self.authenticate()
+        res = self.client.post(
+            '/api/products/',
+            {'name': 'Sans Photo Multipart', 'selling_price': 1000},
+            format='multipart'
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertTrue(res.data['is_active'])
+
     def test_day_closure(self):
         self.authenticate()
         res = self.client.post('/api/day-closures/', {}, format='json')

@@ -53,6 +53,15 @@ class UserManageSerializer(RegisterSerializer):
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    # Déclaré explicitement : sans ça, DRF traite un BooleanField absent
+    # comme False dès que la requête est en multipart/form-data (ce qui est
+    # TOUJOURS le cas depuis le frontend, à cause de l'upload de photo) au
+    # lieu d'appliquer le défaut du modèle (True). En JSON pur ça ne posait
+    # pas de problème, d'où le bug resté invisible longtemps : un produit
+    # fraîchement créé avec une photo se retrouvait is_active=False et
+    # disparaissait du sélecteur de vente sans aucun message d'erreur.
+    is_active = serializers.BooleanField(default=True)
+
     class Meta:
         model = Product
         fields = ['id', 'name', 'category', 'purchase_price', 'selling_price', 'stock', 'min_stock', 'photo', 'is_active', 'created_at', 'updated_at']

@@ -110,11 +110,25 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http:/
 
 export function mediaUrl(path: string | null): string | null {
   if (!path) return null;
-  const relative = path
-    .replace(/^https?:\/\/[^\/]+(\/api)?\/media\//, '')
-    .replace(/^\/?media\//, '');
-  if (!relative) return null;
-  return `${API_BASE}/api/media/${relative}`;
+
+  // En mode stockage S3/Supabase, l'API renvoie déjà l'URL publique finale
+  // du fichier (ex: https://xxx.supabase.co/storage/v1/object/public/...),
+  // qui ne contient pas forcément '/media/'. La réécrire vers notre propre
+  // backend produit une URL cassée. On ne réécrit donc QUE les URLs qui
+  // pointent vers notre propre API (stockage local classique) ; toute
+  // autre URL absolue est déjà utilisable telle quelle.
+  try {
+    const url = new URL(path, API_BASE);
+    const backendHost = new URL(API_BASE).host;
+    if (url.host !== backendHost) {
+      return path;
+    }
+    const relative = url.pathname.replace(/^\/?(api\/)?media\//, '');
+    if (!relative) return null;
+    return `${API_BASE}/api/media/${relative}`;
+  } catch {
+    return path;
+  }
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
