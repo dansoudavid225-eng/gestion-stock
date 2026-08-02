@@ -20,6 +20,7 @@ export default function ProductsPage() {
   const [stockQty, setStockQty] = useState(1);
   const [stockPrice, setStockPrice] = useState(0);
   const [stockSupplier, setStockSupplier] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -58,7 +59,8 @@ export default function ProductsPage() {
   const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
 
   const handleAddStock = async () => {
-    if (!modal.product) return;
+    if (!modal.product || submitting) return;
+    setSubmitting(true);
     try {
       await productsAPI.addStock(modal.product.id, {
         quantity: stockQty, unit_price: stockPrice, supplier: stockSupplier,
@@ -68,16 +70,20 @@ export default function ProductsPage() {
       loadProducts();
     } catch (err: any) {
       alert(err.response?.data?.error || 'Erreur');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!modal.product) return;
+    if (!modal.product || submitting) return;
+    setSubmitting(true);
     try {
       await productsAPI.delete(modal.product.id);
       setModal({ show: false });
       loadProducts();
     } catch { console.error(); alert('Erreur lors de la suppression'); }
+    finally { setSubmitting(false); }
   };
 
   if (!user) return null;
@@ -211,8 +217,10 @@ export default function ProductsPage() {
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setModal({ show: false })}
                 className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Annuler</button>
-              <button onClick={handleAddStock}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">Valider</button>
+              <button onClick={handleAddStock} disabled={submitting}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">
+                {submitting ? 'Ajout...' : 'Valider'}
+              </button>
             </div>
           </div>
         </div>
@@ -226,8 +234,10 @@ export default function ProductsPage() {
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setModal({ show: false })}
                 className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Annuler</button>
-              <button onClick={handleDelete}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700">Supprimer</button>
+              <button onClick={handleDelete} disabled={submitting}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50">
+                {submitting ? 'Suppression...' : 'Supprimer'}
+              </button>
             </div>
           </div>
         </div>

@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import Product, StockEntry, Sale, Loss, InventoryAdjustment, DayClosure, Customer
 
 
@@ -21,6 +23,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         if self.instance:
             self.fields['password'].required = False
+
+    def validate_password(self, value):
+        if value:
+            try:
+                validate_password(value, user=self.instance)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(list(exc.messages))
+        return value
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)

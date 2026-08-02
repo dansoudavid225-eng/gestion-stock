@@ -110,24 +110,11 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http:/
 
 export function mediaUrl(path: string | null): string | null {
   if (!path) return null;
-
-  // Ancien système : URL absolue vers le backend Django, ex: https://backend/media/xxx.jpg
-  const localMediaMatch = path.match(/^https?:\/\/[^\/]+(?:\/api)?\/media\/(.+)$/);
-  if (localMediaMatch) {
-    return `${API_BASE}/api/media/${localMediaMatch[1]}`;
-  }
-
-  // Ancien système : chemin relatif, ex: media/xxx.jpg ou /media/xxx.jpg
-  if (/^\/?media\//.test(path)) {
-    return `${API_BASE}/api/media/${path.replace(/^\/?media\//, '')}`;
-  }
-
-  // Nouveau système : URL publique externe (Supabase Storage / S3) - à utiliser telle quelle
-  if (/^https?:\/\//.test(path)) {
-    return path;
-  }
-
-  return path;
+  const relative = path
+    .replace(/^https?:\/\/[^\/]+(\/api)?\/media\//, '')
+    .replace(/^\/?media\//, '');
+  if (!relative) return null;
+  return `${API_BASE}/api/media/${relative}`;
 }
 
 export function downloadBlob(blob: Blob, filename: string) {

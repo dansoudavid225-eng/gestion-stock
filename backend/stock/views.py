@@ -9,7 +9,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 from openpyxl import Workbook
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, mixins
 from rest_framework.decorators import action
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -23,7 +23,8 @@ from django.db import transaction
 from django.db.models import Sum, F, Q, Count
 from django.db.models.functions import TruncDate
 from django.utils import timezone
-from django.http import HttpResponse, FileResponse
+from django.http import HttpResponse, FileResponse, HttpResponseRedirect
+from django.core.files.storage import default_storage
 from .models import Product, StockEntry, Sale, Loss, InventoryAdjustment, DayClosure, ShopSettings, Customer
 from .permissions import IsGerant
 from .serializers import (
@@ -225,6 +226,48 @@ class SaleViewSet(viewsets.ModelViewSet):
             created_by=self.request.user
         )
 
+    @transaction.atomic
+    def perform_update(self, serializer):
+        sale = self.get_object()
+        old_product = sale.product
+        old_quantity = sale.quantity
+
+        new_product = serializer.validated_data.get('product', old_product)
+        new_quantity = serializer.validated_data.get('quantity', old_quantity)
+        payment_method = serializer.validated_data.get('payment_method', sale.payment_method)
+        client_name = serializer.validated_data.get('client_name', sale.client_name)
+
+        # On restitue d'abord l'ancien produit, puis on redéduit le nouveau,
+        # pour que le stock reflète toujours la vente réellement enregistrée.
+        Product.objects.filter(pk=old_product.pk).update(stock=F('stock') + old_quantity)
+
+        new_product.refresh_from_db()
+        if new_product.stock < new_quantity:
+            raise ValidationError(
+                f"Stock insuffisant pour {new_product.name}: {new_product.stock} disponible(s)"
+            )
+
+        Product.objects.filter(pk=new_product.pk).update(stock=F('stock') - new_quantity)
+
+        is_credit = payment_method == 'credit'
+        serializer.save(
+            product=new_product,
+            quantity=new_quantity,
+            unit_price=new_product.selling_price,
+            total=new_product.selling_price * new_quantity,
+            payment_method=payment_method,
+            client_name=client_name,
+            is_credit=is_credit,
+            settled=sale.settled if is_credit == sale.is_credit else not is_credit,
+        )
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        # On restitue le stock avant de supprimer l'enregistrement,
+        # sinon la vente disparaît mais le stock reste déduit.
+        Product.objects.filter(pk=instance.product_id).update(stock=F('stock') + instance.quantity)
+        instance.delete()
+
 
 class LossViewSet(viewsets.ModelViewSet):
     queryset = Loss.objects.all()
@@ -247,8 +290,46 @@ class LossViewSet(viewsets.ModelViewSet):
 
         serializer.save(created_by=self.request.user)
 
+    @transaction.atomic
+    def perform_update(self, serializer):
+        loss = self.get_object()
+        old_product = loss.product
+        old_quantity = loss.quantity
 
-class InventoryAdjustmentViewSet(viewsets.ModelViewSet):
+        new_product = serializer.validated_data.get('product', old_product)
+        new_quantity = serializer.validated_data.get('quantity', old_quantity)
+
+        # Restituer l'ancienne perte, puis re-déduire la nouvelle quantité.
+        Product.objects.filter(pk=old_product.pk).update(stock=F('stock') + old_quantity)
+
+        new_product.refresh_from_db()
+        if new_product.stock < new_quantity:
+            raise ValidationError(
+                f"Stock insuffisant pour {new_product.name}: {new_product.stock} disponible(s)"
+            )
+        Product.objects.filter(pk=new_product.pk).update(stock=F('stock') - new_quantity)
+
+        serializer.save(product=new_product, quantity=new_quantity)
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        # Annuler une perte doit restituer la quantité au stock.
+        Product.objects.filter(pk=instance.product_id).update(stock=F('stock') + instance.quantity)
+        instance.delete()
+
+
+class InventoryAdjustmentViewSet(
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.ListModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    Journal d'audit des ajustements de stock. Volontairement non modifiable
+    (pas d'UPDATE/PATCH) : un ajustement passé est un fait historique.
+    On peut le créer ou l'annuler (destroy), qui restitue le stock.
+    """
     queryset = InventoryAdjustment.objects.all()
     serializer_class = InventoryAdjustmentSerializer
     permission_classes = [IsAuthenticated, IsGerant]
@@ -274,8 +355,21 @@ class InventoryAdjustmentViewSet(viewsets.ModelViewSet):
             created_by=self.request.user
         )
 
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        # Annuler un ajustement revient à appliquer le delta inverse.
+        delta = instance.new_quantity - instance.old_quantity
+        Product.objects.filter(pk=instance.product_id).update(stock=F('stock') - delta)
+        instance.delete()
 
-class StockEntryViewSet(viewsets.ModelViewSet):
+
+class StockEntryViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
+    """
+    Lecture seule : les entrées de stock ne doivent être créées que via
+    ProductViewSet.add_stock (qui incrémente le stock en même temps).
+    Autoriser un POST direct ici créerait une entrée sans jamais
+    toucher au stock réel du produit -> désynchronisation.
+    """
     queryset = StockEntry.objects.all()
     serializer_class = StockEntrySerializer
     permission_classes = [IsAuthenticated, IsGerant]
@@ -570,8 +664,17 @@ def credits(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def serve_media(request, path):
-    file_path = os.path.normpath(os.path.join(settings.MEDIA_ROOT, path))
-    if not file_path.startswith(settings.MEDIA_ROOT):
+    # En mode S3/Supabase, il n'y a pas de fichiers locaux : on redirige
+    # vers l'URL réelle fournie par le storage backend (évite le crash
+    # précédent qui référençait un MEDIA_ROOT inexistant dans ce mode).
+    if getattr(settings, 'USE_S3_STORAGE', False):
+        if not default_storage.exists(path):
+            return Response({'error': 'Fichier introuvable'}, status=404)
+        return HttpResponseRedirect(default_storage.url(path))
+
+    media_root = os.path.normpath(str(settings.MEDIA_ROOT))
+    file_path = os.path.normpath(os.path.join(media_root, path))
+    if not file_path.startswith(media_root):
         return Response({'error': 'Accès refusé'}, status=403)
     if not os.path.isfile(file_path):
         return Response({'error': 'Fichier introuvable'}, status=404)

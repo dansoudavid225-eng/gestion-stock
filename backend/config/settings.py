@@ -127,6 +127,10 @@ else:
     MEDIA_URL = 'media/'
     MEDIA_ROOT = BASE_DIR / 'media'
 
+# Toujours défini, même en mode S3, pour que serve_media() ne plante pas
+# (utilisé aussi par la commande backup pour un éventuel export de fichiers).
+MEDIA_ROOT = BASE_DIR / 'media'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = False
