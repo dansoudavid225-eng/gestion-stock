@@ -41,6 +41,17 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
+class UserManageSerializer(RegisterSerializer):
+    """
+    Réservé à UserViewSet (accès IsGerant uniquement) : permet à un gérant
+    de définir le rôle (is_staff) d'un utilisateur. Ne JAMAIS utiliser ce
+    serializer sur une route publique comme /api/auth/register/, sous
+    peine de permettre à n'importe qui de s'auto-promouvoir administrateur.
+    """
+    class Meta(RegisterSerializer.Meta):
+        fields = RegisterSerializer.Meta.fields + ['is_staff']
+
+
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product

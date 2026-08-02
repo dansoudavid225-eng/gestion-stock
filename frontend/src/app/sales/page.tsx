@@ -141,6 +141,10 @@ export default function SalesPage() {
           total: item.product.selling_price * item.quantity,
           unit_price: item.product.selling_price,
         });
+        // On retire du panier au fur et à mesure : si un article suivant
+        // échoue, on ne revendra pas par erreur ceux déjà enregistrés
+        // côté serveur en cliquant à nouveau sur "Confirmer".
+        setCart((prev) => prev.filter((i) => i.product.id !== item.product.id));
       }
       setReceipt(soldItems);
       setSuccess('Vente(s) enregistrée(s) !');
@@ -150,7 +154,11 @@ export default function SalesPage() {
       loadData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.[0] || err.response?.data?.detail || "Erreur lors de la vente");
+      const baseMsg = err.response?.data?.[0] || err.response?.data?.detail || "Erreur lors de la vente";
+      setError(soldItems.length > 0
+        ? `${soldItems.length} article(s) déjà enregistré(s). ${baseMsg} — vérifiez le panier avant de réessayer.`
+        : baseMsg);
+      setShowCheckout(false);
     } finally {
       setSaving(false);
     }

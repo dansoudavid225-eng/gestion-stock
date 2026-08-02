@@ -17,6 +17,7 @@ export default function CustomersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(0);
   const [modal, setModal] = useState<{ customer?: any; show: boolean }>({ show: false });
+  const [deleting, setDeleting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -55,12 +56,14 @@ export default function CustomersPage() {
   const totalPages = Math.max(1, Math.ceil(customers.length / PAGE_SIZE));
 
   const handleDelete = async () => {
-    if (!modal.customer) return;
+    if (!modal.customer || deleting) return;
+    setDeleting(true);
     try {
       await customersAPI.delete(modal.customer.id);
       setModal({ show: false });
       loadCustomers();
     } catch { console.error(); alert('Erreur lors de la suppression'); }
+    finally { setDeleting(false); }
   };
 
   if (!user) return null;
@@ -159,8 +162,10 @@ export default function CustomersPage() {
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setModal({ show: false })}
                 className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Annuler</button>
-              <button onClick={handleDelete}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700">Supprimer</button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-50">
+                {deleting ? 'Suppression...' : 'Supprimer'}
+              </button>
             </div>
           </div>
         </div>

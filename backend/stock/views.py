@@ -28,7 +28,7 @@ from django.core.files.storage import default_storage
 from .models import Product, StockEntry, Sale, Loss, InventoryAdjustment, DayClosure, ShopSettings, Customer
 from .permissions import IsGerant
 from .serializers import (
-    UserSerializer, RegisterSerializer, ProductSerializer, ProductListSerializer,
+    UserSerializer, RegisterSerializer, UserManageSerializer, ProductSerializer, ProductListSerializer,
     StockEntrySerializer, SaleSerializer, SaleCreateSerializer,
     LossSerializer, InventoryAdjustmentSerializer, DayClosureSerializer, CustomerSerializer
 )
@@ -388,7 +388,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
-            return RegisterSerializer
+            return UserManageSerializer
         return UserSerializer
 
     def perform_create(self, serializer):
