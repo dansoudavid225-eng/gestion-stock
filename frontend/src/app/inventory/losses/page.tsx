@@ -47,7 +47,7 @@ export default function LossesPage() {
     setSubmitting(true);
     try {
       await lossesAPI.create({
-        product_id: Number(form.product_id),
+        product: Number(form.product_id),
         quantity: form.quantity,
         reason: form.reason,
       });

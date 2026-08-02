@@ -47,7 +47,7 @@ export default function AdjustmentsPage() {
     setSubmitting(true);
     try {
       await adjustmentsAPI.create({
-        product_id: Number(form.product_id),
+        product: Number(form.product_id),
         new_quantity: form.new_quantity,
         reason: form.reason,
       });
