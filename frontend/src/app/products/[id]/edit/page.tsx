@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { productsAPI } from '@/lib/api';
+import { productsAPI, mediaUrl } from '@/lib/api';
 import AppLayout from '@/components/AppLayout';
 
 export default function EditProductPage() {
@@ -17,10 +17,11 @@ export default function EditProductPage() {
     stock: 0, min_stock: 5, is_active: true,
   });
   // Mode de saisie du prix d'achat : soit le prix unitaire directement,
-  // soit le prix total payé pour tout le lot (divisé par le stock actuel
-  // pour obtenir le prix unitaire réellement enregistré).
-  const [priceMode, setPriceMode] = useState<'unit' | 'lot'>('unit');
-  const [lotTotalPrice, setLotTotalPrice] = useState(0);
+  // soit le prix total payé pour un lot + la quantité de ce lot (le prix
+  // unitaire réellement enregistré est calculé = total ÷ quantité).
+  const [purchaseMode, setPurchaseMode] = useState<'unit' | 'total'>('unit');
+  const [purchaseTotal, setPurchaseTotal] = useState(0);
+  const [purchaseQty, setPurchaseQty] = useState(0);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -46,8 +47,7 @@ export default function EditProductPage() {
           min_stock: p.min_stock ?? 5,
           is_active: p.is_active ?? true,
         });
-        if (p.photo) setPhotoPreview(p.photo);
-        setLotTotalPrice((p.purchase_price || 0) * (p.stock ?? 0));
+        if (p.photo) setPhotoPreview(mediaUrl(p.photo));
       })
       .catch(() => router.push('/products'))
       .finally(() => setLoading(false));
@@ -59,11 +59,21 @@ export default function EditProductPage() {
       setError('Le nom et le prix de vente sont requis');
       return;
     }
+    if (purchaseMode === 'total' && purchaseQty <= 0) {
+      setError("Indique la quantité correspondant au prix d'achat total");
+      return;
+    }
     setSaving(true);
     setError('');
     try {
+      const finalForm = {
+        ...form,
+        purchase_price: purchaseMode === 'total'
+          ? Number((purchaseTotal / purchaseQty).toFixed(2))
+          : form.purchase_price,
+      };
       const data = new FormData();
-      Object.entries(form).forEach(([k, v]) => data.append(k, String(v)));
+      Object.entries(finalForm).forEach(([k, v]) => data.append(k, String(v)));
       if (photo) data.append('photo', photo);
       await productsAPI.update(id, data);
       router.push('/products');
@@ -106,49 +116,59 @@ export default function EditProductPage() {
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-gray-700">Prix d&apos;achat</label>
               <div className="inline-flex rounded-lg border border-gray-300 p-0.5 text-xs">
-                <button type="button" onClick={() => setPriceMode('unit')}
-                  className={`px-2.5 py-1 rounded-md transition-colors ${priceMode === 'unit' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                <button type="button" onClick={() => setPurchaseMode('unit')}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${purchaseMode === 'unit' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                   Prix unitaire
                 </button>
-                <button type="button" onClick={() => setPriceMode('lot')}
-                  className={`px-2.5 py-1 rounded-md transition-colors ${priceMode === 'lot' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                <button type="button" onClick={() => { setPurchaseMode('total'); if (!purchaseQty) setPurchaseQty(form.stock || 1); }}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${purchaseMode === 'total' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                   Prix total du lot
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                {priceMode === 'unit' ? (
-                  <>
-                    <label className="block text-xs text-gray-500 mb-1">Prix d&apos;achat unitaire (FCFA)</label>
-                    <input type="number" min="0" value={form.purchase_price}
-                      onChange={(e) => setForm({ ...form, purchase_price: Number(e.target.value) })}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                  </>
-                ) : (
-                  <>
-                    <label className="block text-xs text-gray-500 mb-1">Prix total du lot (FCFA)</label>
-                    <input type="number" min="0" value={lotTotalPrice}
-                      onChange={(e) => {
-                        const total = Number(e.target.value);
-                        setLotTotalPrice(total);
-                        setForm({ ...form, purchase_price: form.stock > 0 ? total / form.stock : 0 });
-                      }}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {form.stock > 0
-                        ? `≈ ${form.purchase_price.toLocaleString(undefined, { maximumFractionDigits: 2 })} FCFA / unité (÷ ${form.stock} en stock)`
-                        : "Stock à 0 : impossible de calculer le prix unitaire"}
-                    </p>
-                  </>
-                )}
+
+            {purchaseMode === 'unit' ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Prix d&apos;achat unitaire (FCFA)</label>
+                  <input type="number" min="0" value={form.purchase_price}
+                    onChange={(e) => setForm({ ...form, purchase_price: Number(e.target.value) })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Prix de vente *</label>
+                  <input type="number" min="0" value={form.selling_price} onChange={(e) => setForm({ ...form, selling_price: Number(e.target.value) })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" required />
+                </div>
               </div>
+            ) : (
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Prix de vente *</label>
-                <input type="number" min="0" value={form.selling_price} onChange={(e) => setForm({ ...form, selling_price: Number(e.target.value) })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" required />
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Prix total payé (FCFA)</label>
+                    <input type="number" min="0" value={purchaseTotal}
+                      onChange={(e) => setPurchaseTotal(Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Quantité du lot</label>
+                    <input type="number" min="1" value={purchaseQty}
+                      onChange={(e) => setPurchaseQty(Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Prix de vente *</label>
+                    <input type="number" min="0" value={form.selling_price} onChange={(e) => setForm({ ...form, selling_price: Number(e.target.value) })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" required />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Prix d&apos;achat unitaire calculé : {purchaseQty > 0
+                    ? `${(purchaseTotal / purchaseQty).toLocaleString(undefined, { maximumFractionDigits: 2 })} FCFA / unité`
+                    : '—'}
+                </p>
               </div>
-            </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
