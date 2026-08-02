@@ -211,9 +211,17 @@ class SaleViewSet(viewsets.ModelViewSet):
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
         if start_date:
-            qs = qs.filter(date__gte=start_date)
+            # date__date__gte (et non date__gte) : sinon Django compare le
+            # datetime brut à "start_date 00:00:00", ce qui exclurait à tort
+            # les ventes antérieures dans la même journée locale selon l'heure.
+            qs = qs.filter(date__date__gte=start_date)
         if end_date:
-            qs = qs.filter(date__lte=end_date)
+            # Même piège côté borne haute, en pire : date__lte=end_date
+            # équivaut à "avant end_date 00:00:00", donc exclut TOUTES les
+            # ventes du jour même de end_date (elles ont lieu après minuit).
+            # C'est ce qui faisait disparaître le rapport "Aujourd'hui" à
+            # l'écran (start_date == end_date == aujourd'hui).
+            qs = qs.filter(date__date__lte=end_date)
         product = self.request.query_params.get('product')
         if product:
             qs = qs.filter(product_id=product)
